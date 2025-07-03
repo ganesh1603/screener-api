@@ -1,50 +1,48 @@
-from flask import Flask, request, jsonify
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 import requests
-from bs4 import BeautifulSoup
+import os
 
-app = Flask(__name__)
+# Fetch secrets from environment variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ZAPIER_WEBHOOK_URL = os.getenv("ZAPIER_WEBHOOK_URL")
 
-@app.route('/screener', methods=['POST'])  # ✅ MUST have methods=['POST']
-def screener():
-    try:
-        data = request.get_json()
-        stock = data.get("stock", "")
-        
-        # ✅ Validate input
-        if not stock:
-            return jsonify({"error": "Stock symbol is missing"}), 400
+# Simple in-memory user tracking
+user_state = {}
 
-        url = f"https://www.screener.in/company/{stock}/consolidated/"
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        page = requests.get(url, headers=headers)
-        soup = BeautifulSoup(page.content, "html.parser")
-        
-        ratios = soup.find_all("li", class_="flex flex-space-between")
-        company_url = f"https://www.screener.in/company/{stock}/"
+# /start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_state[user_id] = "awaiting_stock"
+    await update.message.reply_text("👋 Welcome! Please enter a stock name (e.g. TCS, INFY):")
 
-        response = {
-            "Stock": stock,
-            "ROE": ratios[1].text if len(ratios) > 1 else "",
-            "Debt to Equity": ratios[2].text if len(ratios) > 2 else "",
-            "Current Ratio": ratios[3].text if len(ratios) > 3 else "",
-            "Market Cap": ratios[4].text if len(ratios) > 4 else "",
-            "Price to Earnings": ratios[5].text if len(ratios) > 5 else "",
-            "Price to Book": ratios[6].text if len(ratios) > 6 else "",
-            "Dividend Yield": ratios[7].text if len(ratios) > 7 else "",
-            "52 Week High": ratios[8].text if len(ratios) > 8 else "",
-            "52 Week Low": ratios[9].text if len(ratios) > 9 else "",
-            "Concall URL": company_url + "concall/"
+# Handle stock input
+async def handle_stock(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    stock = update.message.text.strip().upper()
+
+    if user_state.get(user_id) == "awaiting_stock":
+        payload = {
+            "stock_name": stock,
+            "chat_id": user_id
         }
 
-        return jsonify(response)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        try:
+            requests.post(ZAPIER_WEBHOOK_URL, json=payload)
+            await update.message.reply_text(f"📊 Analyzing *{stock}*... please wait!", parse_mode="Markdown")
+        except Exception as e:
+            await update.message.reply_text("❌ Failed to send data to Zapier.")
 
-@app.route("/", methods=["GET"])
-def index():
-    return "✅ Screener Scraper Running"
+        user_state[user_id] = None
+    else:
+        await update.message.reply_text("❗ Please type /start to begin.")
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+# Main runner
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_stock))
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
