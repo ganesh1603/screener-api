@@ -1,6 +1,11 @@
 services:
   - type: web
-    name: screener-api
-    env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    name: telegram-stock-bot
+    runtime: python
+    buildCommand: ""
+    startCommand: "python bot.py"
+    envVars:
+      - key: BOT_TOKEN
+        value: your_botfather_token_here
+      - key: ZAPIER_WEBHOOK_URL
+        value: your_zapier_webhook_here
