@@ -4,8 +4,8 @@ import requests
 import os
 
 # Fetch secrets from environment variables
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-ZAPIER_WEBHOOK_URL = os.getenv("ZAPIER_WEBHOOK_URL")
+BOT_TOKEN = os.getenv("bot_token")
+ZAPIER_WEBHOOK_URL = os.getenv("zapier_webhookurl")
 
 # Simple in-memory user tracking
 user_state = {}
